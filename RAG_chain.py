@@ -1,7 +1,7 @@
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 from langchain_core.prompts import PromptTemplate
-from huggingface_hub import InferenceClient
+from langchain_google_genai import ChatGoogleGenerativeAI # <-- NEW ENGINE
 import os
 
 CHROMA_PATH = "chroma_db"
@@ -37,38 +37,37 @@ prompt = PromptTemplate(
     template=PROMPT_TEMPLATE
 )
 
-client = InferenceClient(
-    model="HuggingFaceH4/zephyr-7b-beta",
-    token=os.environ.get("HUGGINGFACEHUB_API_TOKEN")
+# Initialize the Gemini Model
+llm = ChatGoogleGenerativeAI(
+    model="gemini-1.5-flash", # Highly optimized for RAG speed and accuracy
+    temperature=0.3,
+    google_api_key=os.environ.get("GOOGLE_API_KEY") 
 )
 
 def ask(question: str, history: list):
-    # Format history
+    # Format history from DB into readable text
     history_text = ""
     for msg in history:
         history_text += f"{msg['role'].capitalize()}: {msg['content']}\n"
 
-    # Retrieve relevant chunks
+    # Retrieve relevant chunks from Chroma
     docs = retriever.invoke(question)
     context = "\n\n".join([doc.page_content for doc in docs])
     sources = list(set([
-        os.path.basename(doc.metadata.get("source", "Unknown")) 
+        doc.metadata.get("source", "Unknown")
         for doc in docs
     ]))
 
-    # Build prompt
+    # Build final prompt
     final_prompt = prompt.format(
         chat_history=history_text,
         context=context,
         question=question
     )
 
-    # Call HF Inference API using chat completion
-    response = client.chat_completion(
-        messages=[{"role": "user", "content": final_prompt}],
-        max_tokens=256,
-        temperature=0.3,
-    )
+    # Call Gemini API via LangChain
+    response = llm.invoke(final_prompt)
+    answer = response.content.strip()
 
-    answer = response.choices[0].message.content.strip()
+    # Return raw sources — main.py handles basename
     return {"answer": answer, "sources": sources}
