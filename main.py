@@ -98,3 +98,17 @@ def clear_history(session_id: str):
     conn.commit()
     conn.close()
     return {"message": "History cleared"}
+@app.get("/api/sessions")
+def get_sessions():
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT session_id, MIN(content) as title, MAX(timestamp) as last_active
+        FROM conversations
+        WHERE role = 'user'
+        GROUP BY session_id
+        ORDER BY last_active DESC
+    """)
+    rows = cursor.fetchall()
+    conn.close()
+    return {"sessions": [{"session_id": r[0], "title": r[1][:40], "last_active": r[2]} for r in rows]}

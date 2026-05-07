@@ -39,7 +39,7 @@ prompt = PromptTemplate(
 
 # Initialize the Gemini Model
 llm = ChatGoogleGenerativeAI(
-    model="gemini-1.5-flash", # Highly optimized for RAG speed and accuracy
+    model="gemini-2.5-flash", # <-- The current generation engine
     temperature=0.3,
     google_api_key=os.environ.get("GOOGLE_API_KEY") 
 )
