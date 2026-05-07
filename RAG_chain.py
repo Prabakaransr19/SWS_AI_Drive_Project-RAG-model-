@@ -1,12 +1,13 @@
-from langchain_huggingface import HuggingFaceEmbeddings, HuggingFacePipeline
+from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 from langchain_core.prompts import PromptTemplate
-from transformers import pipeline
+from huggingface_hub import InferenceClient
+import os
 
 CHROMA_PATH = "chroma_db"
 
-PROMPT_TEMPLATE = """You are an HR assistant for SWS AI. 
-Answer ONLY from the context below. 
+PROMPT_TEMPLATE = """You are an HR assistant for SWS AI.
+Answer ONLY from the context below.
 If the answer is not in the context, say "I don't have that information in the company documents."
 
 Chat History:
@@ -29,21 +30,16 @@ def load_vectorstore():
     )
     return vectorstore
 
-def get_llm():
-    pipe = pipeline(
-        "text2text-generation",
-        model="MBZUAI/LaMini-Flan-T5-248M",
-        max_new_tokens=256,
-    )
-    llm = HuggingFacePipeline(pipeline=pipe)
-    return llm
-
 vectorstore = load_vectorstore()
-llm = get_llm()
 retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
 prompt = PromptTemplate(
     input_variables=["chat_history", "context", "question"],
     template=PROMPT_TEMPLATE
+)
+
+client = InferenceClient(
+    model="HuggingFaceH4/zephyr-7b-beta",
+    token=os.environ.get("HUGGINGFACEHUB_API_TOKEN")
 )
 
 def ask(question: str, history: list):
@@ -55,7 +51,10 @@ def ask(question: str, history: list):
     # Retrieve relevant chunks
     docs = retriever.invoke(question)
     context = "\n\n".join([doc.page_content for doc in docs])
-    sources = list(set([doc.metadata.get("source", "Unknown") for doc in docs]))
+    sources = list(set([
+        os.path.basename(doc.metadata.get("source", "Unknown")) 
+        for doc in docs
+    ]))
 
     # Build prompt
     final_prompt = prompt.format(
@@ -64,7 +63,12 @@ def ask(question: str, history: list):
         question=question
     )
 
-    # Generate answer
-    answer = llm.invoke(final_prompt)
+    # Call HF Inference API using chat completion
+    response = client.chat_completion(
+        messages=[{"role": "user", "content": final_prompt}],
+        max_tokens=256,
+        temperature=0.3,
+    )
 
+    answer = response.choices[0].message.content.strip()
     return {"answer": answer, "sources": sources}
