@@ -1,11 +1,11 @@
 from langchain_community.document_loaders import PyPDFLoader
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 import os
 
-DOCS_PATH = "Docs/"
-CHROMA_PATH = "chroma_db"
+DOCS_PATH = r"C:\Users\Prabakaran\Downloads\rag\Docs"
+CHROMA_PATH = "chroma_db" 
 
 def load_and_store():
     # 1. Load all PDFs
@@ -26,7 +26,8 @@ def load_and_store():
 
     # 3. Embed + Store in Chroma
     embeddings = HuggingFaceEmbeddings(
-        model_name="sentence-transformers/all-MiniLM-L6-v2"
+        model_name="sentence-transformers/all-MiniLM-L6-v2"  
+        # embedding model from Hugging Face : sentence-transformers/all-MiniLM-L6-v2
     )
     vectorstore = Chroma.from_documents(
         documents=chunks,
