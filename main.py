@@ -2,8 +2,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
-from RAG_chain import build_chain
 import os
+from RAG_chain import ask
 
 app = FastAPI()
 
@@ -13,11 +13,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Load chain once at startup
-print("Loading RAG chain...")
-chain = build_chain()
-print("RAG chain ready!")
 
 class Message(BaseModel):
     role: str
@@ -29,25 +24,9 @@ class ChatRequest(BaseModel):
 
 @app.post("/api/chat")
 def chat(req: ChatRequest):
-    # Convert history to list of tuples (user, assistant)
-    chat_history = []
-    messages = req.history
-    for i in range(0, len(messages) - 1, 2):
-        user_msg = messages[i].content
-        ai_msg = messages[i+1].content if i+1 < len(messages) else ""
-        chat_history.append((user_msg, ai_msg))
-
-    result = chain.invoke({
-        "question": req.question,
-        "chat_history": chat_history
-    })
-
-    sources = list(set([
-        os.path.basename(doc.metadata.get("source", "Unknown"))
-        for doc in result["source_documents"]
-    ]))
-
+    history = [{"role": m.role, "content": m.content} for m in req.history]
+    result = ask(req.question, history)
     return {
         "answer": result["answer"],
-        "sources": sources
+        "sources": [os.path.basename(s) for s in result["sources"]]
     }

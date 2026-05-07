@@ -1,10 +1,23 @@
 from langchain_huggingface import HuggingFaceEmbeddings, HuggingFacePipeline
-from langchain_community.vectorstores import Chroma
-from langchain.chains import ConversationalRetrievalChain
+from langchain_chroma import Chroma
+from langchain_core.prompts import PromptTemplate
 from transformers import pipeline
-import os
 
 CHROMA_PATH = "chroma_db"
+
+PROMPT_TEMPLATE = """You are an HR assistant for SWS AI. 
+Answer ONLY from the context below. 
+If the answer is not in the context, say "I don't have that information in the company documents."
+
+Chat History:
+{chat_history}
+
+Context:
+{context}
+
+Question: {question}
+
+Answer:"""
 
 def load_vectorstore():
     embeddings = HuggingFaceEmbeddings(
@@ -19,20 +32,39 @@ def load_vectorstore():
 def get_llm():
     pipe = pipeline(
         "text2text-generation",
-        model="google/flan-t5-base",
+        model="MBZUAI/LaMini-Flan-T5-248M",
         max_new_tokens=256,
     )
     llm = HuggingFacePipeline(pipeline=pipe)
     return llm
 
-def build_chain():
-    vectorstore = load_vectorstore()
-    llm = get_llm()
-    retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
-    
-    chain = ConversationalRetrievalChain.from_llm(
-        llm=llm,
-        retriever=retriever,
-        return_source_documents=True,
+vectorstore = load_vectorstore()
+llm = get_llm()
+retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
+prompt = PromptTemplate(
+    input_variables=["chat_history", "context", "question"],
+    template=PROMPT_TEMPLATE
+)
+
+def ask(question: str, history: list):
+    # Format history
+    history_text = ""
+    for msg in history:
+        history_text += f"{msg['role'].capitalize()}: {msg['content']}\n"
+
+    # Retrieve relevant chunks
+    docs = retriever.invoke(question)
+    context = "\n\n".join([doc.page_content for doc in docs])
+    sources = list(set([doc.metadata.get("source", "Unknown") for doc in docs]))
+
+    # Build prompt
+    final_prompt = prompt.format(
+        chat_history=history_text,
+        context=context,
+        question=question
     )
-    return chain
+
+    # Generate answer
+    answer = llm.invoke(final_prompt)
+
+    return {"answer": answer, "sources": sources}
